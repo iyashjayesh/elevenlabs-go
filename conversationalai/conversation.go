@@ -89,10 +89,7 @@ func (c *Conversation) StartSession() error {
 		CustomLLMExtraBody:         c.config.ExtraBody,
 		ConversationConfigOverride: c.config.ConversationConfigOverride,
 		DynamicVariables:           c.config.DynamicVariables,
-		SourceInfo: SourceInfo{
-			Source:  "go_sdk",
-			Version: "v1.0.0",
-		},
+
 		UserID: c.config.UserID,
 	}
 
@@ -155,7 +152,7 @@ func (c *Conversation) getWSSUrl() string {
 		Scheme:   "wss",
 		Host:     "api.elevenlabs.io",
 		Path:     "/v1/convai/conversation",
-		RawQuery: fmt.Sprintf("agent_id=%s&source=go_sdk", c.agentID),
+		RawQuery: fmt.Sprintf("agent_id=%s", c.agentID),
 	}
 	if c.config.Environment != "" {
 		u.RawQuery += "&environment=" + c.config.Environment
@@ -230,7 +227,7 @@ func (c *Conversation) handleServerMessage(raw RawServerMessage) {
 
 	case "interruption":
 		if raw.InterruptionEvent != nil {
-			atomic.AddInt64(&c.lastInterruptID, 1) // Just tracking locally for now
+			atomic.StoreInt64(&c.lastInterruptID, int64(raw.InterruptionEvent.EventID))
 			if c.audioInterface != nil {
 				c.audioInterface.Interrupt()
 			}
@@ -239,7 +236,7 @@ func (c *Conversation) handleServerMessage(raw RawServerMessage) {
 	case "ping":
 		if raw.PingEvent != nil {
 			// Reply with pong
-			c.writeCh <- ClientEvent{Type: "pong"}
+			c.writeCh <- PongEvent{Type: "pong", EventID: raw.PingEvent.EventID}
 			if raw.PingEvent.PingMs != nil && c.callbacks.OnLatencyMeasurement != nil {
 				c.callbacks.OnLatencyMeasurement(*raw.PingEvent.PingMs)
 			}

@@ -43,7 +43,7 @@ type ConversationInitiationClientData struct {
 	CustomLLMExtraBody           map[string]interface{} `json:"custom_llm_extra_body,omitempty"`
 	ConversationConfigOverride   map[string]interface{} `json:"conversation_config_override,omitempty"`
 	DynamicVariables             map[string]interface{} `json:"dynamic_variables,omitempty"`
-	SourceInfo                   SourceInfo             `json:"source_info"`
+	SourceInfo                   *SourceInfo            `json:"source_info,omitempty"`
 	UserID                       string                 `json:"user_id,omitempty"`
 }
 
@@ -65,7 +65,7 @@ type AudioEventAlignment struct {
 
 type AudioEvent struct {
 	AudioBase64 string               `json:"audio_base_64"`
-	EventID     string               `json:"event_id"`
+	EventID     int                  `json:"event_id"`
 	Alignment   *AudioEventAlignment `json:"alignment,omitempty"`
 }
 
@@ -87,11 +87,17 @@ type UserTranscriptionEvent struct {
 }
 
 type InterruptionEvent struct {
-	EventID string `json:"event_id"`
+	EventID int `json:"event_id"`
 }
 
 type PingEvent struct {
-	PingMs *int `json:"ping_ms,omitempty"`
+	PingMs  *int   `json:"ping_ms,omitempty"`
+	EventID int    `json:"event_id"`
+}
+
+type PongEvent struct {
+	Type    string `json:"type"`
+	EventID int    `json:"event_id"`
 }
 
 type ClientToolCallEvent struct {
