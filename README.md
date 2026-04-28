@@ -21,9 +21,32 @@ Go SDK for interacting with the [ElevenLabs API](https://elevenlabs.io/), specif
 go get github.com/iyashjayesh/elevenlabs-go
 ```
 
-## Quick Start
+## Examples
 
-See the `example/main.go` file for a fully working text-based example of spinning up a conversational agent and registering a custom tool.
+The [`example/`](./example) directory ships with two runnable demos:
+
+| Path                                       | What it does                                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- |
+| [`example/text`](./example/text)           | Browser-based text chat. A small Go server proxies WebSocket messages between an HTML UI and the agent. |
+| [`example/audio`](./example/audio)         | Browser-based voice chat. The browser captures the mic via Web Audio (with built-in echo cancellation), streams 16 kHz PCM over WebSocket to the Go server, and plays the agent's PCM audio back through the speakers. |
+
+Both examples read `ELEVENLABS_AGENT_ID` and (optionally) `ELEVENLABS_API_KEY` from the environment.
+
+```bash
+export ELEVENLABS_AGENT_ID=...
+export ELEVENLABS_API_KEY=...   # only required if the agent has auth enabled
+
+# Text demo: open http://localhost:8080
+cd example/text && go run .
+
+# Voice demo: open http://localhost:8080 and tap the mic
+# (the agent must be configured with pcm_16000 output in the ElevenLabs dashboard)
+cd example/audio && go run .
+```
+
+The voice demo relies on the browser's built-in echo cancellation, so the laptop speaker → mic feedback loop is handled for you. The mic stream is downsampled to 16-bit mono PCM at 16 kHz inside the browser and shipped to the Go server as binary WebSocket frames, which the server simply forwards to and from the agent. Each example is its own Go module so they can be built independently.
+
+## Quick Start
 
 ```go
 package main
