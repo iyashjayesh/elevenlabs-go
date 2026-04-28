@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
@@ -35,6 +36,7 @@ type Conversation struct {
 
 	conn     *websocket.Conn
 	done     chan struct{}
+	endOnce  sync.Once
 	writeCh  chan interface{}
 	
 	lastInterruptID int64
@@ -122,15 +124,18 @@ func (c *Conversation) StartSession() error {
 	return nil
 }
 
-// EndSession stops the conversation.
+// EndSession stops the conversation. It is safe to call from multiple
+// goroutines and multiple times; only the first call has an effect.
 func (c *Conversation) EndSession() {
-	close(c.done)
-	if c.audioInterface != nil {
-		c.audioInterface.Stop()
-	}
-	if c.callbacks.OnEndSession != nil {
-		c.callbacks.OnEndSession()
-	}
+	c.endOnce.Do(func() {
+		close(c.done)
+		if c.audioInterface != nil {
+			c.audioInterface.Stop()
+		}
+		if c.callbacks.OnEndSession != nil {
+			c.callbacks.OnEndSession()
+		}
+	})
 }
 
 // Wait blocks until the session is finished.

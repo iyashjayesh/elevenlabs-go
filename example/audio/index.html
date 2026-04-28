@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElevenLabs Voice Chat</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #121212;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 600px;
+            height: 85vh;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            font-weight: 600;
+            font-size: 1.2rem;
+            letter-spacing: 0.5px;
+            background: rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scrollbar-width: thin;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.agent {
+            align-self: flex-start;
+            background: #2a2a2a;
+            color: #ffffff;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: #ffffff;
+            color: #000000;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+        }
+
+        .chat-input {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex-grow: 1;
+            padding: 14px 18px;
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .chat-input input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .chat-input input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .chat-input input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .send-btn {
+            background: white;
+            color: #000;
+            border: none;
+            border-radius: 25px;
+            padding: 0 22px;
+            height: 46px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .mic-btn {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            background: white;
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+            flex-shrink: 0;
+        }
+
+        .mic-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .mic-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .mic-btn:active {
+            transform: translateY(0);
+        }
+
+        .mic-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .mic-btn.recording {
+            background: #ef4444;
+            color: white;
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+            animation: pulse 1.6s ease-out infinite;
+        }
+
+        .mic-btn.speaking {
+            background: #4ade80;
+            color: #052e16;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+            }
+
+            70% {
+                box-shadow: 0 0 0 14px rgba(239, 68, 68, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+
+        .status {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .latency-indicator {
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #a0aec0;
+        }
+
+        .message-meta {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 5px;
+            text-align: right;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div>ElevenLabs Voice DEMO</div>
+            <div class="status">
+                <!-- <span id="latency" class="latency-indicator" style="display: none;"></span> -->
+                <span id="statusText">Tap the mic to start</span>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="messages"></div>
+
+        <div class="chat-input">
+            <input type="text" id="textInput" placeholder="Type a question (optional)..."
+                   autocomplete="off" disabled>
+            <button id="sendBtn" class="send-btn" disabled>Send</button>
+            <button id="micBtn" class="mic-btn" aria-label="Toggle microphone" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const messagesEl = document.getElementById('messages');
+        const statusTextEl = document.getElementById('statusText');
+        const latencyEl = document.getElementById('latency');
+        const micBtn = document.getElementById('micBtn');
+        const textInput = document.getElementById('textInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        const SAMPLE_RATE = 16000;
+        const FRAME_SIZE = 4096;
+
+        let ws = null;
+        let audioCtx = null;
+        let micStream = null;
+        let micSource = null;
+        let micProcessor = null;
+        let muteNode = null;
+
+        let nextPlayTime = 0;
+        const playbackSources = new Set();
+        let currentLatency = '';
+
+        // Suppress user_transcript echoes for messages we just typed.
+        let lastTypedText = '';
+        let lastTypedAt = 0;
+
+        connectWS();
+
+        micBtn.addEventListener('click', () => {
+            if (micProcessor) {
+                stopMic();
+            } else {
+                startMic().catch(err => {
+                    console.error(err);
+                    setStatus('Mic error: ' + err.message, '#f87171');
+                });
+            }
+        });
+
+        sendBtn.addEventListener('click', sendText);
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendText();
+        });
+
+        function connectWS() {
+            setStatus('Connecting...', '#a0aec0');
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                setStatus('Connected to Agent', '#4ade80');
+                textInput.disabled = false;
+                sendBtn.disabled = false;
+                micBtn.disabled = false;
+            };
+
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    playPcm(new Int16Array(event.data));
+                    return;
+                }
+                let msg;
+                try { msg = JSON.parse(event.data); } catch { return; }
+                handleControl(msg);
+            };
+
+            ws.onclose = () => {
+                setStatus('Disconnected', '#f87171');
+                stopMic();
+                textInput.disabled = true;
+                sendBtn.disabled = true;
+                micBtn.disabled = true;
+                latencyEl.style.display = 'none';
+            };
+
+            ws.onerror = (err) => console.error('WS error:', err);
+        }
+
+        function sendText() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            const text = textInput.value.trim();
+            if (!text) return;
+            appendMessage(text, 'user');
+            lastTypedText = text;
+            lastTypedAt = Date.now();
+            ws.send(JSON.stringify({ type: 'user_message', text }));
+            textInput.value = '';
+        }
+
+        async function startMic() {
+            setStatus('Requesting microphone...', '#a0aec0');
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
+            });
+
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+            }
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            micSource = audioCtx.createMediaStreamSource(micStream);
+            micProcessor = audioCtx.createScriptProcessor(FRAME_SIZE, 1, 1);
+            // ScriptProcessorNode only fires when its output is connected.
+            // Route through a muted gain so the mic does not echo to speakers.
+            muteNode = audioCtx.createGain();
+            muteNode.gain.value = 0;
+
+            micProcessor.onaudioprocess = (e) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                const input = e.inputBuffer.getChannelData(0);
+                const int16 = new Int16Array(input.length);
+                for (let i = 0; i < input.length; i++) {
+                    const s = Math.max(-1, Math.min(1, input[i]));
+                    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                ws.send(int16.buffer);
+            };
+
+            micSource.connect(micProcessor);
+            micProcessor.connect(muteNode);
+            muteNode.connect(audioCtx.destination);
+
+            micBtn.classList.add('recording');
+            setStatus('Listening', '#4ade80');
+        }
+
+        function stopMic() {
+            if (micProcessor) {
+                try { micProcessor.disconnect(); } catch {}
+                micProcessor.onaudioprocess = null;
+            }
+            if (micSource) try { micSource.disconnect(); } catch {}
+            if (muteNode) try { muteNode.disconnect(); } catch {}
+            if (micStream) micStream.getTracks().forEach(t => t.stop());
+
+            micProcessor = null;
+            micSource = null;
+            muteNode = null;
+            micStream = null;
+
+            micBtn.classList.remove('recording');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                setStatus('Connected to Agent', '#4ade80');
+            }
+        }
+
+        function ensurePlaybackContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playPcm(int16) {
+            ensurePlaybackContext();
+            const float32 = new Float32Array(int16.length);
+            for (let i = 0; i < int16.length; i++) {
+                float32[i] = int16[i] / 0x8000;
+            }
+            const buffer = audioCtx.createBuffer(1, float32.length, SAMPLE_RATE);
+            buffer.getChannelData(0).set(float32);
+
+            const src = audioCtx.createBufferSource();
+            src.buffer = buffer;
+            src.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            const startAt = Math.max(now, nextPlayTime);
+            src.start(startAt);
+            nextPlayTime = startAt + buffer.duration;
+
+            playbackSources.add(src);
+            src.onended = () => playbackSources.delete(src);
+        }
+
+        function flushPlayback() {
+            playbackSources.forEach(src => {
+                try { src.stop(); } catch {}
+            });
+            playbackSources.clear();
+            if (audioCtx) nextPlayTime = audioCtx.currentTime;
+        }
+
+        function handleControl(msg) {
+            switch (msg.type) {
+                case 'agent_response':
+                    appendMessage(msg.text, 'agent');
+                    break;
+                case 'user_transcript':
+                    if (msg.text === lastTypedText && Date.now() - lastTypedAt < 5000) {
+                        lastTypedText = '';
+                        break;
+                    }
+                    appendMessage(msg.text, 'user');
+                    break;
+                case 'latency':
+                    latencyEl.style.display = 'inline-block';
+                    latencyEl.innerText = msg.text;
+                    currentLatency = msg.text;
+                    break;
+                case 'interrupt':
+                    flushPlayback();
+                    break;
+                case 'status':
+                    setStatus(msg.text, '#a0aec0');
+                    break;
+            }
+        }
+
+        function appendMessage(text, sender) {
+            const el = document.createElement('div');
+            el.className = `message ${sender}`;
+
+            const textEl = document.createElement('div');
+            textEl.innerText = text;
+            el.appendChild(textEl);
+
+            if (sender === 'agent' && currentLatency) {
+                const meta = document.createElement('div');
+                meta.className = 'message-meta';
+                meta.innerText = `Latency: ${currentLatency}`;
+                el.appendChild(meta);
+            }
+
+            messagesEl.appendChild(el);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function setStatus(text, color) {
+            statusTextEl.innerText = text;
+            if (color) statusTextEl.style.color = color;
+        }
+    </script>
+</body>
+
+</html>
