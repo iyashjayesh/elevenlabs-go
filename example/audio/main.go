@@ -84,7 +84,6 @@ func handleConversation(w http.ResponseWriter, r *http.Request, agentID, apiKey 
 		},
 		OnUserTranscript: func(text string) {
 			log.Printf("User: %s", text)
-			audio.MarkUserHasSpoken()
 			send(BrowserMessage{Type: "user_transcript", Text: text})
 		},
 		OnLatencyMeasurement: func(ms int) {
@@ -127,7 +126,6 @@ func handleConversation(w http.ResponseWriter, r *http.Request, agentID, apiKey 
 			}
 			if msg.Type == "user_message" && msg.Text != "" {
 				log.Printf("User (text): %s", msg.Text)
-				audio.MarkUserHasSpoken()
 				conv.SendUserMessage(msg.Text)
 			}
 		}
