@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 	"github.com/iyashjayesh/elevenlabs-go/conversationalai"
@@ -26,8 +27,15 @@ type BrowserAudio struct {
 	writeMu  sync.Mutex
 	callback conversationalai.InputCallback
 
-	once sync.Once
-	done chan struct{}
+	once          sync.Once
+	done          chan struct{}
+	userHasSpoken int32 // atomic; 0 = waiting for first user input
+}
+
+// MarkUserHasSpoken enables audio output. Call this once the user has sent
+// their first message so the agent's welcome/greeting is not played.
+func (b *BrowserAudio) MarkUserHasSpoken() {
+	atomic.StoreInt32(&b.userHasSpoken, 1)
 }
 
 // BrowserMessage is the JSON envelope used for control & text messages
@@ -52,6 +60,9 @@ func (b *BrowserAudio) Stop() error {
 }
 
 func (b *BrowserAudio) Output(audio []byte) error {
+	if atomic.LoadInt32(&b.userHasSpoken) == 0 {
+		return nil
+	}
 	return b.writeRaw(websocket.BinaryMessage, audio)
 }
 
