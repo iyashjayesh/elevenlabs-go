@@ -256,7 +256,7 @@
         <div class="chat-header">
             <div>ElevenLabs Voice DEMO</div>
             <div class="status">
-                <!-- <span id="latency" class="latency-indicator" style="display: none;"></span> -->
+                <span id="latency" class="latency-indicator" style="display: none;"></span>
                 <span id="statusText">Tap the mic to start</span>
             </div>
         </div>
@@ -289,6 +289,24 @@
 
         const SAMPLE_RATE = 16000;
         const FRAME_SIZE = 4096;
+
+        /** Downsample mic PCM to 16 kHz — browsers often ignore AudioContext({sampleRate:16000}). */
+        function resampleTo16k(float32, inputRate) {
+            if (inputRate === SAMPLE_RATE) {
+                return float32;
+            }
+            const ratio = inputRate / SAMPLE_RATE;
+            const outLen = Math.floor(float32.length / ratio);
+            const out = new Float32Array(outLen);
+            for (let i = 0; i < outLen; i++) {
+                const srcPos = i * ratio;
+                const i0 = Math.floor(srcPos);
+                const i1 = Math.min(i0 + 1, float32.length - 1);
+                const t = srcPos - i0;
+                out[i] = float32[i0] * (1 - t) + float32[i1] * t;
+            }
+            return out;
+        }
 
         let ws = null;
         let audioCtx = null;
@@ -351,7 +369,7 @@
                 textInput.disabled = true;
                 sendBtn.disabled = true;
                 micBtn.disabled = true;
-                latencyEl.style.display = 'none';
+                if (latencyEl) latencyEl.style.display = 'none';
             };
 
             ws.onerror = (err) => console.error('WS error:', err);
@@ -394,9 +412,11 @@
             micProcessor.onaudioprocess = (e) => {
                 if (!ws || ws.readyState !== WebSocket.OPEN) return;
                 const input = e.inputBuffer.getChannelData(0);
-                const int16 = new Int16Array(input.length);
-                for (let i = 0; i < input.length; i++) {
-                    const s = Math.max(-1, Math.min(1, input[i]));
+                const inputRate = e.inputBuffer.sampleRate;
+                const pcm = resampleTo16k(input, inputRate);
+                const int16 = new Int16Array(pcm.length);
+                for (let i = 0; i < pcm.length; i++) {
+                    const s = Math.max(-1, Math.min(1, pcm[i]));
                     int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                 }
                 ws.send(int16.buffer);
@@ -480,8 +500,10 @@
                     appendMessage(msg.text, 'user');
                     break;
                 case 'latency':
-                    latencyEl.style.display = 'inline-block';
-                    latencyEl.innerText = msg.text;
+                    if (latencyEl) {
+                        latencyEl.style.display = 'inline-block';
+                        latencyEl.innerText = msg.text;
+                    }
                     currentLatency = msg.text;
                     break;
                 case 'interrupt':
