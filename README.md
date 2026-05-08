@@ -8,6 +8,12 @@
 
 Go SDK for interacting with the [ElevenLabs API](https://elevenlabs.io/), specifically focusing on the new **ElevenAgents (Conversational AI)** module.
 
+<div align="center">
+  <video autoplay muted loop playsinline width="100%">
+    <source src="conversationalai_demo.mp4" type="video/mp4">
+  </video>
+</div>
+
 ## Features
 
 - **Real-time WebSockets**: Connect to ElevenLabs Conversational AI agents via WebSocket.
