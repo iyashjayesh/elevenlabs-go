@@ -33,8 +33,11 @@ type BrowserAudio struct {
 // BrowserMessage is the JSON envelope used for control & text messages
 // between the Go server and the browser tab.
 type BrowserMessage struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type             string   `json:"type"`
+	Text             string   `json:"text,omitempty"`
+	Chars            []string `json:"chars,omitempty"`
+	CharStartTimesMs []int    `json:"char_start_times_ms,omitempty"`
+	CharDurationsMs  []int    `json:"char_durations_ms,omitempty"`
 }
 
 func NewBrowserAudio(ws *websocket.Conn) *BrowserAudio {

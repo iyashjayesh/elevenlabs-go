@@ -14,6 +14,10 @@
 // The agent must be configured with `pcm_16000` (16 kHz, 16-bit, mono) audio
 // output in the ElevenLabs dashboard. The default `mp3_44100_128` will not
 // play correctly because this example pipes raw PCM straight to Web Audio.
+//
+// For on-screen subtitles timed to speech, use an agent/voice configuration
+// that emits character alignment on audio events; otherwise text appears when
+// the server sends agent_response (often after audio starts).
 package main
 
 import (
@@ -78,6 +82,17 @@ func handleConversation(w http.ResponseWriter, r *http.Request, agentID, apiKey 
 	}
 
 	callbacks := conversationalai.Callbacks{
+		OnAudioAlignment: func(a *conversationalai.AudioEventAlignment) {
+			if a == nil || len(a.Chars) == 0 {
+				return
+			}
+			_ = audio.WriteJSON(BrowserMessage{
+				Type:             "audio_alignment",
+				Chars:            a.Chars,
+				CharStartTimesMs: a.CharStartTimesMs,
+				CharDurationsMs:  a.CharDurationsMs,
+			})
+		},
 		OnAgentResponse: func(text string) {
 			log.Printf("Agent: %s", text)
 			send(BrowserMessage{Type: "agent_response", Text: text})

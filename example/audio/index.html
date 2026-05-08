@@ -248,6 +248,10 @@
             text-align: right;
             font-family: monospace;
         }
+
+        .agent-stream-content {
+            min-height: 1.4em;
+        }
     </style>
 </head>
 
@@ -319,6 +323,23 @@
         const playbackSources = new Set();
         let currentLatency = '';
 
+        /** Alignment JSON for the next binary PCM frame (server sends JSON before audio). */
+        let pendingAlignment = null;
+
+        /** Monotonic counter to cancel stale alignment rAF loops. */
+        let revealGeneration = 0;
+        /**
+         * Full alignment text from PCM chunks already received on the wire (not waiting for rAF).
+         * Ensures chunk N+1 uses the correct prefix even while chunk N is still animating.
+         */
+        let alignmentCommittedPrefix = '';
+        /** After agent_response, stop per-chunk reveals so later PCM doesn't overwrite the final caption. */
+        let agentResponseLocked = false;
+        /** Outer `.message.agent` bubble for the current agent utterance (kept until playback drains). */
+        let streamingAgentBubble = null;
+
+        let playbackIdleDebounce = null;
+
         // Suppress user_transcript echoes for messages we just typed.
         let lastTypedText = '';
         let lastTypedAt = 0;
@@ -355,11 +376,17 @@
 
             ws.onmessage = (event) => {
                 if (event.data instanceof ArrayBuffer) {
-                    playPcm(new Int16Array(event.data));
+                    const align = pendingAlignment;
+                    pendingAlignment = null;
+                    playPcm(new Int16Array(event.data), align);
                     return;
                 }
                 let msg;
                 try { msg = JSON.parse(event.data); } catch { return; }
+                if (msg.type === 'audio_alignment') {
+                    pendingAlignment = msg;
+                    return;
+                }
                 handleControl(msg);
             };
 
@@ -382,6 +409,10 @@
             appendMessage(text, 'user');
             lastTypedText = text;
             lastTypedAt = Date.now();
+            streamingAgentBubble = null;
+            alignmentCommittedPrefix = '';
+            agentResponseLocked = false;
+            revealGeneration++;
             ws.send(JSON.stringify({ type: 'user_message', text }));
             textInput.value = '';
         }
@@ -457,7 +488,99 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
         }
 
-        function playPcm(int16) {
+        function ensureStreamingAgentBubble() {
+            if (!streamingAgentBubble) {
+                streamingAgentBubble = document.createElement('div');
+                streamingAgentBubble.className = 'message agent';
+                const textEl = document.createElement('div');
+                textEl.className = 'agent-stream-content';
+                streamingAgentBubble.appendChild(textEl);
+                messagesEl.appendChild(streamingAgentBubble);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+            return streamingAgentBubble.querySelector('.agent-stream-content');
+        }
+
+        function cancelStreamingAgentTurn() {
+            clearTimeout(playbackIdleDebounce);
+            playbackIdleDebounce = null;
+            pendingAlignment = null;
+            micBtn.classList.remove('speaking');
+            agentResponseLocked = false;
+            alignmentCommittedPrefix = '';
+            if (streamingAgentBubble) {
+                streamingAgentBubble.remove();
+                streamingAgentBubble = null;
+            }
+        }
+
+        /**
+         * Reveal characters for one PCM chunk using alignment timings (AudioContext clock).
+         * prefixSnapshot must already include every prior chunk's full alignment text.
+         */
+        function scheduleAlignedReveal(startAt, alignment, chunkDurationSec, prefixSnapshot, gen) {
+            const chars = alignment.chars || [];
+            if (!chars.length || !audioCtx) return;
+
+            const starts = alignment.char_start_times_ms || [];
+            const durs = alignment.char_durations_ms || [];
+            const textEl = ensureStreamingAgentBubble();
+            textEl.textContent = prefixSnapshot;
+
+            let endMs = chunkDurationSec * 1000;
+            if (starts.length >= chars.length && chars.length > 0) {
+                const li = chars.length - 1;
+                endMs = Math.max(endMs, (starts[li] ?? 0) + (durs[li] ?? 80));
+            }
+
+            function tick() {
+                if (gen !== revealGeneration) return;
+                const elapsedMs = (audioCtx.currentTime - startAt) * 1000;
+
+                let idx;
+                if (starts.length >= chars.length) {
+                    idx = 0;
+                    for (let i = 0; i < chars.length; i++) {
+                        if ((starts[i] ?? 0) <= elapsedMs) idx = i + 1;
+                        else break;
+                    }
+                } else {
+                    idx = Math.min(chars.length, Math.ceil((elapsedMs / Math.max(endMs, 1)) * chars.length));
+                }
+
+                if (elapsedMs >= endMs) idx = chars.length;
+
+                textEl.textContent = prefixSnapshot + chars.slice(0, idx).join('');
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+
+                if (idx >= chars.length) return;
+                requestAnimationFrame(tick);
+            }
+            requestAnimationFrame(tick);
+        }
+
+        function schedulePlaybackIdleCheck() {
+            clearTimeout(playbackIdleDebounce);
+            playbackIdleDebounce = setTimeout(() => {
+                playbackIdleDebounce = null;
+                if (playbackSources.size > 0) return;
+                if (!audioCtx) return;
+                if (audioCtx.currentTime < nextPlayTime - 0.04) return;
+                onAgentPlaybackFullyIdle();
+            }, 320);
+        }
+
+        function onAgentPlaybackFullyIdle() {
+            micBtn.classList.remove('speaking');
+            streamingAgentBubble = null;
+            alignmentCommittedPrefix = '';
+            agentResponseLocked = false;
+        }
+
+        function playPcm(int16, alignment) {
+            clearTimeout(playbackIdleDebounce);
+            playbackIdleDebounce = null;
+
             ensurePlaybackContext();
             const float32 = new Float32Array(int16.length);
             for (let i = 0; i < int16.length; i++) {
@@ -475,28 +598,77 @@
             src.start(startAt);
             nextPlayTime = startAt + buffer.duration;
 
+            micBtn.classList.add('speaking');
+
+            const hasAlign = alignment && alignment.chars && alignment.chars.length > 0 && !agentResponseLocked;
+            if (hasAlign) {
+                const prefixSnapshot = alignmentCommittedPrefix;
+                const chunkFull = alignment.chars.join('');
+                alignmentCommittedPrefix += chunkFull;
+                revealGeneration++;
+                const gen = revealGeneration;
+                scheduleAlignedReveal(startAt, alignment, buffer.duration, prefixSnapshot, gen);
+            }
+
             playbackSources.add(src);
-            src.onended = () => playbackSources.delete(src);
+            src.onended = () => {
+                playbackSources.delete(src);
+                schedulePlaybackIdleCheck();
+            };
         }
 
         function flushPlayback() {
+            revealGeneration++;
+            clearTimeout(playbackIdleDebounce);
+            playbackIdleDebounce = null;
             playbackSources.forEach(src => {
                 try { src.stop(); } catch {}
             });
             playbackSources.clear();
             if (audioCtx) nextPlayTime = audioCtx.currentTime;
+            micBtn.classList.remove('speaking');
+            cancelStreamingAgentTurn();
         }
 
         function handleControl(msg) {
             switch (msg.type) {
-                case 'agent_response':
-                    appendMessage(msg.text, 'agent');
+                case 'agent_response': {
+                    const text = (msg.text || '').trim();
+                    if (!text) break;
+                    revealGeneration++;
+                    agentResponseLocked = true;
+                    if (streamingAgentBubble) {
+                        const contentEl = streamingAgentBubble.querySelector('.agent-stream-content');
+                        if (contentEl) contentEl.textContent = text;
+                        if (currentLatency && latencyEl) {
+                            let meta = streamingAgentBubble.querySelector('.message-meta');
+                            if (!meta) {
+                                meta = document.createElement('div');
+                                meta.className = 'message-meta';
+                                streamingAgentBubble.appendChild(meta);
+                            }
+                            meta.innerText = `Latency: ${currentLatency}`;
+                        }
+                        messagesEl.scrollTop = messagesEl.scrollHeight;
+                        break;
+                    }
+                    appendMessage(text, 'agent');
+                    const last = messagesEl.lastElementChild;
+                    if (last && last.classList.contains('agent')) {
+                        streamingAgentBubble = last;
+                    }
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
                     break;
+                }
                 case 'user_transcript':
                     if (msg.text === lastTypedText && Date.now() - lastTypedAt < 5000) {
                         lastTypedText = '';
                         break;
                     }
+                    streamingAgentBubble = null;
+                    alignmentCommittedPrefix = '';
+                    agentResponseLocked = false;
+                    revealGeneration++;
                     appendMessage(msg.text, 'user');
                     break;
                 case 'latency':
@@ -520,6 +692,9 @@
             el.className = `message ${sender}`;
 
             const textEl = document.createElement('div');
+            if (sender === 'agent') {
+                textEl.className = 'agent-stream-content';
+            }
             textEl.innerText = text;
             el.appendChild(textEl);
 

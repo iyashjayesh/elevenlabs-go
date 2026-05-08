@@ -204,14 +204,13 @@ func (c *Conversation) handleServerMessage(raw RawServerMessage) {
 	switch raw.Type {
 	case "audio":
 		if raw.AudioEvent != nil {
-			// Check interruption ID if event is too old
-			// For simplicity, converting eventID string to int is needed, skipping for now
 			audioBytes, err := base64.StdEncoding.DecodeString(raw.AudioEvent.AudioBase64)
 			if err == nil && c.audioInterface != nil {
+				// Alignment before audio bytes so bridges (e.g. browser WS) can pair metadata with PCM.
+				if c.callbacks.OnAudioAlignment != nil && raw.AudioEvent.Alignment != nil {
+					c.callbacks.OnAudioAlignment(raw.AudioEvent.Alignment)
+				}
 				c.audioInterface.Output(audioBytes)
-			}
-			if c.callbacks.OnAudioAlignment != nil && raw.AudioEvent.Alignment != nil {
-				c.callbacks.OnAudioAlignment(raw.AudioEvent.Alignment)
 			}
 		}
 
