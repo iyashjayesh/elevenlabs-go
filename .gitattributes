@@ -1,0 +1,2 @@
+# Examples are not the library. Keep Linguist reporting this SDK as Go.
+example/** linguist-vendored
